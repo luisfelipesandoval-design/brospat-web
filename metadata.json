@@ -1,0 +1,6 @@
+{
+  "name": "BROSPAT — Carta, Combos y Broaster Artesanal",
+  "description": "Aplicación de pedidos de BROSPAT para explorar la carta de pollo broaster artesanal, combos para compartir y personalizar presas, guarniciones y cremas de la casa.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

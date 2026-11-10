@@ -1,0 +1,76 @@
+{
+  "entities": {
+    "LoyaltyCard": {
+      "title": "LoyaltyCard",
+      "description": "Tracks a Google-authenticated customer's Broaster purchases (10 Broasters = 1 in-store surprise gift).",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the card owner."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Customer display name shown on the loyalty card."
+        },
+        "stamps": {
+          "type": "integer",
+          "description": "Current stamps on the active 10-slot card (0 to 9)."
+        },
+        "totalBroasters": {
+          "type": "integer",
+          "description": "Total Broasters accumulated across orders."
+        },
+        "availableRewards": {
+          "type": "integer",
+          "description": "Number of unlocked surprise gifts ready to redeem in-store."
+        },
+        "redeemedRewards": {
+          "type": "integer",
+          "description": "Total number of surprise gifts already redeemed in-store."
+        },
+        "activeRewardCode": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 16,
+          "pattern": "^[A-Z0-9\\-]+$",
+          "description": "Verification code for an active surprise gift, or NONE when 0 rewards are available."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the loyalty card was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the loyalty card was last updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "displayName",
+        "stamps",
+        "totalBroasters",
+        "availableRewards",
+        "redeemedRewards",
+        "activeRewardCode",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/loyaltyCards/{userId}": {
+      "schema": {
+        "$ref": "#/entities/LoyaltyCard"
+      },
+      "description": "Per-user loyalty card document keyed by Firebase Auth UID."
+    }
+  }
+}

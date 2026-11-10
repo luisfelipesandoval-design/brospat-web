@@ -1,0 +1,163 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser()
+        && (
+          request.auth.token.email == 'luisfelipesandovalcharca@gmail.com'
+          || exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        );
+    }
+
+    function isValidId(id) {
+      return id is string
+        && id.size() >= 1
+        && id.size() <= 128
+        && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidLoyaltyCard(data, targetUserId) {
+      return data.keys().hasAll([
+          'ownerId',
+          'displayName',
+          'stamps',
+          'totalBroasters',
+          'availableRewards',
+          'redeemedRewards',
+          'activeRewardCode',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'displayName',
+          'stamps',
+          'totalBroasters',
+          'availableRewards',
+          'redeemedRewards',
+          'activeRewardCode',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId.size() >= 1
+        && data.ownerId.size() <= 128
+        && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == targetUserId
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 80
+        && data.stamps is int
+        && data.stamps >= 0
+        && data.stamps <= 9
+        && data.totalBroasters is int
+        && data.totalBroasters >= 0
+        && data.totalBroasters <= 100000
+        && data.availableRewards is int
+        && data.availableRewards >= 0
+        && data.availableRewards <= 10000
+        && data.redeemedRewards is int
+        && data.redeemedRewards >= 0
+        && data.redeemedRewards <= 10000
+        && data.stamps + (data.availableRewards + data.redeemedRewards) * 10 == data.totalBroasters
+        && data.activeRewardCode is string
+        && data.activeRewardCode.size() >= 4
+        && data.activeRewardCode.size() <= 16
+        && data.activeRewardCode.matches('^[A-Z0-9\\-]+$')
+        && ((data.availableRewards == 0 && data.activeRewardCode == 'NONE')
+            || (data.availableRewards >= 1 && data.activeRewardCode != 'NONE'))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isAddStampsAction() {
+      return incoming().totalBroasters > existing().totalBroasters
+        && incoming().totalBroasters - existing().totalBroasters <= 25
+        && incoming().redeemedRewards == existing().redeemedRewards;
+    }
+
+    function isRedeemRewardAction() {
+      return existing().availableRewards >= 1
+        && incoming().availableRewards == existing().availableRewards - 1
+        && incoming().redeemedRewards == existing().redeemedRewards + 1
+        && incoming().totalBroasters == existing().totalBroasters
+        && incoming().stamps == existing().stamps;
+    }
+
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && isValidId(adminId) && (adminId == request.auth.uid || isAdmin());
+      allow list: if false;
+      allow create, update, delete: if false;
+    }
+
+    match /loyaltyCards/{userId} {
+      allow get: if isSignedIn()
+        && isValidId(userId)
+        && (userId == request.auth.uid || isAdmin());
+
+      allow list: if isAdmin();
+
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && (userId == request.auth.uid || isAdmin())
+        && isValidLoyaltyCard(incoming(), userId)
+        && incoming().totalBroasters <= 25
+        && incoming().redeemedRewards == 0
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidLoyaltyCard(incoming(), userId)
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            userId == request.auth.uid
+            && (
+              (isAddStampsAction()
+                && incoming().diff(existing()).affectedKeys().hasOnly([
+                  'stamps',
+                  'totalBroasters',
+                  'availableRewards',
+                  'activeRewardCode',
+                  'displayName',
+                  'updatedAt'
+                ]))
+              || (isRedeemRewardAction()
+                && incoming().diff(existing()).affectedKeys().hasOnly([
+                  'availableRewards',
+                  'redeemedRewards',
+                  'activeRewardCode',
+                  'updatedAt'
+                ]))
+            )
+          )
+        );
+
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+  }
+}
