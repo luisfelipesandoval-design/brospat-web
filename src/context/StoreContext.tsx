@@ -78,8 +78,6 @@ interface StoreContextValue {
   ) => Promise<boolean>;
 }
 
-const ADMIN_TOKEN_KEY = 'brospat_admin_token';
-
 const StoreContext = createContext<StoreContextValue | undefined>(undefined);
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -88,13 +86,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
   const { user, card } = useLoyalty();
   const [catalog, setCatalog] = useState<CatalogData>(DEFAULT_CATALOG);
   const [isCatalogLoaded, setIsCatalogLoaded] = useState<boolean>(false);
-  const [adminToken, setAdminToken] = useState<string | null>(() => {
-    try {
-      return sessionStorage.getItem(ADMIN_TOKEN_KEY);
-    } catch {
-      return null;
-    }
-  });
+  const [adminToken, setAdminToken] = useState<string | null>(null);
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState<boolean>(false);
   const [adminOrders, setAdminOrders] = useState<OrderRecord[]>([]);
   const [adminCustomers, setAdminCustomers] = useState<CustomerRecord[]>([]);
@@ -104,9 +96,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const res = await fetch('/api/catalog');
       if (res.ok) {
-        const data = (await res.json()) as CatalogData;
-        if (data && Array.isArray(data.dishes)) {
-          setCatalog(data);
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = (await res.json()) as CatalogData;
+          if (data && Array.isArray(data.dishes)) {
+            setCatalog(data);
+          }
         }
       }
     } catch {
@@ -120,7 +115,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
     void refreshCatalog();
   }, [refreshCatalog]);
 
-  // Verify saved admin session token on mount
+  // Verify active admin session token when set
   useEffect(() => {
     if (!adminToken) return;
     fetch('/api/admin/verify', {
@@ -129,11 +124,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
       .then((res) => {
         if (!res.ok) {
           setAdminToken(null);
-          try {
-            sessionStorage.removeItem(ADMIN_TOKEN_KEY);
-          } catch {
-            // ignore
-          }
         }
       })
       .catch(() => {
@@ -172,22 +162,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
       });
       if (res.status === 401) {
         setAdminToken(null);
-        try {
-          sessionStorage.removeItem(ADMIN_TOKEN_KEY);
-        } catch {
-          // ignore
-        }
         return;
       }
       if (res.ok) {
-        const data = (await res.json()) as {
-          catalog: CatalogData;
-          orders: OrderRecord[];
-          customers: CustomerRecord[];
-        };
-        setCatalog(data.catalog);
-        setAdminOrders(data.orders);
-        setAdminCustomers(data.customers);
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = (await res.json()) as {
+            catalog: CatalogData;
+            orders: OrderRecord[];
+            customers: CustomerRecord[];
+          };
+          setCatalog(data.catalog);
+          setAdminOrders(data.orders);
+          setAdminCustomers(data.customers);
+        }
       }
     } finally {
       setIsLoadingAdmin(false);
@@ -208,16 +196,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }),
         });
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          return `El servidor API no está disponible en este entorno (HTTP ${res.status}).`;
+        }
         const data = (await res.json()) as { token?: string; error?: string };
         if (!res.ok || !data.token) {
           return data.error || 'Credenciales incorrectas.';
         }
         setAdminToken(data.token);
-        try {
-          sessionStorage.setItem(ADMIN_TOKEN_KEY, data.token);
-        } catch {
-          // ignore
-        }
         setIsAdminLoginOpen(false);
         return null;
       } catch {
@@ -239,11 +226,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     }
     setAdminToken(null);
-    try {
-      sessionStorage.removeItem(ADMIN_TOKEN_KEY);
-    } catch {
-      // ignore
-    }
   }, [adminToken]);
 
   const submitCustomerOrder = useCallback(
